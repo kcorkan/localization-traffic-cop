@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>localization-traffic-cop</title>
+    <!--  (c) 2014 Rally Software Development Corp.  All Rights Reserved. -->
+    <!--  Build Date: Fri May 16 2014 08:29:36 GMT-0600 (MDT) -->
+    
+    <script type="text/javascript">
+        var APP_BUILD_DATE = "Fri May 16 2014 08:29:36 GMT-0600 (MDT)";
+        var CHECKSUM = 4937013354;
+    </script>
+    
+    <script type="text/javascript" src="/apps/2.0rc2/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function() {
+             
+/*
+ */
+Ext.define('Rally.technicalservices.AppSettings',{
+	extend:'Rally.app.AppSettings'
+});
+
+/**
+ * A link that pops up a version dialog box
+ */
+
+Ext.define('Rally.technicalservices.InfoLink',{
+    extend: 'Ext.Component',
+    alias: 'widget.tsinfolink',
+    
+    /**
+     * @cfg {String} informationHtml
+     * Additional text to be displayed on the popup dialog (for exmaple,
+     * to add a description of the app's use or functionality)
+     */
+    informationHtml: null,
+    
+    /**
+     * 
+     * cfg {String} title
+     * The title for the dialog box
+     */
+     title: "Build Information",
+    
+    renderTpl: "<div id='{id}-infolinkWrap' class='tsinfolink'>--</div>",
+
+    initComponent: function() {
+        this.callParent(arguments);
+       
+    },
+    
+    onRender: function() {
+        this.callParent(arguments);
+        this.mon(this.el,'click',this.onClick,this);
+    },
+    _generateChecksum: function(string){
+        var chk = 0x12345678,
+            i;
+        string = string.replace(/var CHECKSUM = .*;/,"");
+        
+        for (i = 0; i < string.length; i++) {
+            chk += (string.charCodeAt(i) * i);
+        }
+    
+        return chk;
+    },
+    _checkChecksum: function(container) {
+        var me = this;
+        Ext.Ajax.request({
+            url: document.URL,
+            params: {
+                id: 1
+            },
+            success: function (response) {
+                text = response.responseText;
+                if ( CHECKSUM ) {
+                    if ( CHECKSUM !== me._generateChecksum(text) ) {
+                        console.log("Checksums don't match!");
+                        if ( me.dialog ) {
+                            me.dialog.add({xtype:'container',html:'Checksums do not match'});
+                        }
+                    }
+                }
+            }
+        });
+    },
+    onClick: function(e) {
+        var me = this;
+        this._checkChecksum(this);
+        
+        var dialog_items = [];
+        
+        if ( this.informationHtml ) {
+            dialog_items.push({
+                xtype:'container',
+                html: this.informationHtml
+            });
+        }
+                
+        dialog_items.push({
+            xtype:'container',
+            html:"This app was created by the Rally Technical Services Team."
+        });
+        
+        if ( APP_BUILD_DATE ) {
+            dialog_items.push({
+                xtype:'container',
+                html:'Build date/time: ' + APP_BUILD_DATE
+            });
+        }
+        
+        if (this.dialog){this.dialog.destroy();}
+        this.dialog = Ext.create('Rally.ui.dialog.Dialog',{
+            defaults: { padding: 5, margin: 5 },
+            closable: true,
+            draggable: true,
+            title: me.title,
+            items: dialog_items
+        });
+        this.dialog.show();
+    }
+});
+
+/*
+ */
+Ext.define('Rally.technicalservices.Logger',{
+    constructor: function(config){
+        Ext.apply(this,config);
+    },
+    log: function(args){
+        var timestamp = "[ " + Ext.util.Format.date(new Date(), "Y-m-d H:i:s.u") + " ]";
+        //var output_args = arguments;
+        //output_args.unshift( [ "[ " + timestamp + " ]" ] );
+        //output_args = Ext.Array.push(output_args,arguments);
+        
+        var output_args = [];
+        output_args = Ext.Array.push(output_args,[timestamp]);
+        output_args = Ext.Array.push(output_args, Ext.Array.slice(arguments,0));
+
+        window.console && console.log.apply(console,output_args);
+    }
+
+});
+
+Ext.override(Rally.ui.menu.bulk.RecordMenu,{
+    items: [
+        {xtype: 'rallyrecordmenuitembulkedit'},
+        {xtype: 'rallyrecordmenuitembulktag'},
+        {xtype: 'rallyrecordmenuitembulkparent'},
+        {xtype: 'rallyrecordmenuitembulkdefecttouserstory'},
+        {xtype: 'rallyrecordmenuitembulktasktoworkproduct'},
+        {xtype: 'rallyrecordmenuitembulktestcasetoworkproduct'},
+        {xtype: 'rallyrecordmenuitembulktestcasetotestfolder'}
+    ]
+//    initComponent: function () {
+//        this.items = this._getMenuItems();
+//        this.callParent(arguments);
+//    }
+});
+Ext.define('CustomApp', {
+    extend: 'Rally.app.App',
+    componentCls: 'app',
+    logger: new Rally.technicalservices.Logger(),
+    items: [
+       {xtype:'container',itemId:'display_box'} 
+        /*,
+        {xtype:'tsinfolink'}
+        */
+    ],
+    childOptions: null,
+    launch: function() {
+        if (typeof(this.getAppId()) == 'undefined' ) {
+            this.logger.log ('App is not running from within Rally.');
+            this._showExternalSettingsDialog(this.getSettingsFields());
+            this.logger.log('WORKSPACE',this.getContext().getWorkspace().Name);
+            this.logger.log('PROJECT',this.getContext().getProject().Name);
+            this.logger.log('USER', this.getContext().getUser().UserName);
+        }  
+        
+    	Rally.data.ModelFactory.getModel({
+    		type:'UserStory',
+    		success: this._buildUserStoryGrid,
+    		scope: this
+    	});
+    	this.childOptions = Ext.create('ChildOptions',{});
+    	this.logger.log('child options created: ' + childOptions.getChildCount());
+        
+    },
+    
+    _buildUserStoryGrid: function(model){
+    	
+    	var storyGrid = Ext.create('Rally.ui.grid.Grid', 
+    			{
+    				model: model,
+    				columnCfgs: ['FormattedID','Name','Owner','ScheduleState'],
+    				storeConfig: {}
+    			});
+    	this.down('#display_box').add(storyGrid);
+ 
+    	
+    },
+    _createStories: function(){
+    	this.logger.log('Create Epic Story');
+    	this.logger.log('Existing Story to be epic child');
+    	this.logger.log('Add Region and Language children (of epic or story?)');
+    	
+    	
+    	
+    },
+    
+    /*
+     * 
+     * Settings related code below here 
+     * 
+     */
+   //Overrides getSettingsFields in Rally.app.App
+   getSettingsFields: function() {
+
+       var _chooseOnlyCheckboxFields = function(field){
+           var should_show_field = true;
+
+           if ( field.hidden ) {
+               should_show_field = false;
+           }
+           if ( field.attributeDefinition ) {
+               var type = field.attributeDefinition.AttributeType;
+               if ( type != "BOOLEAN"  ) {
+                   should_show_field = false;
+               }
+           } else {
+               should_show_field = false;
+           }
+           return should_show_field;
+       };
+       
+       return [{
+           name: 'needs_localization_flag',
+           xtype: 'rallyfieldcombobox',
+           model: 'HierarchicalRequirement',
+           fieldLabel: 'Localization Needed Flag Field',
+           labelWidth: 200,
+           margin: 10,
+           _isNotHidden: _chooseOnlyCheckboxFields,
+           value: this.localization_flag,
+           readyEvent: 'ready' //event fired to signify readiness
+       }];
+   },
+   // ONLY FOR RUNNING EXTERNALLY
+   _showExternalSettingsDialog: function(fields){
+       var me = this;
+       if ( this.settings_dialog ) { this.settings_dialog.destroy(); }
+       this.settings_dialog = Ext.create('Rally.ui.dialog.Dialog', {
+            autoShow: false,
+            draggable: true,
+            width: 400,
+            title: 'Settings',
+            scope: this,
+            buttons: [{ 
+               text: 'OK',
+
+               handler: function(cmp){
+                   var settings = {};
+                   Ext.Array.each(fields,function(field){
+                       me.logger.log(field.name, '=',cmp.up('rallydialog').down('[name="' + field.name + '"]').getValue() );
+                       settings[field.name] = cmp.up('rallydialog').down('[name="' + field.name + '"]').getValue();
+                       
+                   });
+                   me.settings = settings;
+                   cmp.up('rallydialog').destroy();
+               }
+           }],
+            items: [
+               {xtype:'container',html: "&nbsp;", padding: 5, margin: 5},
+               {xtype:'container',itemId:'field_box', padding: 5, margin: 5}]
+        });
+        Ext.Array.each(fields,function(field){
+           me.logger.log('Add: ', field.name, field.value); 
+           me.settings_dialog.down('#field_box').add(field);
+        });
+        this.settings_dialog.show();
+    },
+   /*
+    * Override so that the settings box fits (shows the buttons)
+    */
+   showSettings: function(options) {      
+       this._appSettings = Ext.create('Rally.technicalservices.AppSettings', Ext.apply({
+           fields: this.getSettingsFields(),
+           settings: this.getSettings(),
+           defaultSettings: this.getDefaultSettings(),
+           context: this.getContext(),
+           settingsScope: this.settingsScope,
+           autoScroll: true
+       }, options));
+       
+       this._appSettings.on('cancel', this._hideSettings, this);
+       this._appSettings.on('save', this._onSettingsSaved, this);
+
+       this.hide();
+       this.up().add(this._appSettings);
+
+       return this._appSettings;
+   }
+});
+
+Ext.define('ChildOptions',{
+	optionNames: [], //Array of names for each option e.g. 'region, language, etc
+	optionChoices: {}, //Hash\object keyed off of option name;  contains arrays of choices 
+	optionSelections: [], //Array of hash choices
+
+	constructor: function(){
+		this.optionNames = ['Region','Language'];
+		this.optionChoices['Region'] = ['North America','Europe','Asia'];
+		this.optionChoices['Language'] = ['English','German','French','Japanese'];
+	},	
+
+	getChildCount: function(){
+		return optionSelections.length; 
+	},
+	
+	isSelected: function(region, language){
+		for (var i=0;i<optionSelections.length;i++)
+		{
+			if ((optionSelections[i]['Region'] == region) && (optionSelections[i]['Language']==language)){
+				return true;  
+			}
+		}		
+		return false; 
+	},
+	add: function(region, language){
+		if (!isSelected(region,language)){
+			var optionSelection = {};
+			optionSelection['Region'] = region;
+			optionSelection['Language'] = language; 
+			optionSelections.push(optionSelection);
+		}
+	},
+	remove: function(region, language){
+		for (var i=0;i<optionSelections.length;i++)
+		{
+			if ((optionSelections[i]['Region'] == region) && (optionSelections[i]['Language']==language)){
+				Ext.Array.remove(optionSelections, i);
+				i = optionSelections.length; 
+			}
+		}
+	}
+});
+            
+               Rally.launchApp('CustomApp', {
+                   name: 'localization-traffic-cop'
+               });
+        });
+    </script>
+    
+    <style type="text/css">
+
+.app {
+}
+.tsinfolink {
+    position:absolute;
+    right:0px;
+    width:5%;
+}
+    </style>
+
+</head>
+<body></body>
+</html>
