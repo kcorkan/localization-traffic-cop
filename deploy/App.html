@@ -3,11 +3,11 @@
 <head>
     <title>localization-traffic-cop</title>
     <!--  (c) 2014 Rally Software Development Corp.  All Rights Reserved. -->
-    <!--  Build Date: Fri May 16 2014 08:29:36 GMT-0600 (MDT) -->
+    <!--  Build Date: Tue May 20 2014 17:18:24 GMT-0600 (MDT) -->
     
     <script type="text/javascript">
-        var APP_BUILD_DATE = "Fri May 16 2014 08:29:36 GMT-0600 (MDT)";
-        var CHECKSUM = 4937013354;
+        var APP_BUILD_DATE = "Tue May 20 2014 17:18:24 GMT-0600 (MDT)";
+        var CHECKSUM = 13967023361;
     </script>
     
     <script type="text/javascript" src="/apps/2.0rc2/sdk.js"></script>
@@ -143,25 +143,153 @@ Ext.define('Rally.technicalservices.Logger',{
 
 });
 
-Ext.override(Rally.ui.menu.bulk.RecordMenu,{
-    items: [
-        {xtype: 'rallyrecordmenuitembulkedit'},
-        {xtype: 'rallyrecordmenuitembulktag'},
-        {xtype: 'rallyrecordmenuitembulkparent'},
-        {xtype: 'rallyrecordmenuitembulkdefecttouserstory'},
-        {xtype: 'rallyrecordmenuitembulktasktoworkproduct'},
-        {xtype: 'rallyrecordmenuitembulktestcasetoworkproduct'},
-        {xtype: 'rallyrecordmenuitembulktestcasetotestfolder'}
-    ]
-//    initComponent: function () {
-//        this.items = this._getMenuItems();
-//        this.callParent(arguments);
-//    }
-});
+
+    /**
+     * @private
+     * Gear menu shown by default on rows of Rally.ui.grid.Grids and Rally.ui.cardboard.Cards of boards.
+     */
+    /**
+     * @private
+     * A menu item for doing actions to a record
+     */
+    Ext.define('Rally.ui.menu.item.AddLocalization', {
+        extend: 'Ext.menu.Item',
+        alias: 'widget.rallyrecordmenuitemlocalization',
+
+        config: {
+
+            /**
+             * @cfg {Rally.domain.WsapiModel}
+             * The record of the menu
+             */
+            record: undefined,
+
+            /**
+             * @cfg {Function}
+             * This is called when a menu item is clicked
+             */
+            handler: function () {
+              	console.log (this.record);
+              	console.log (this.app);
+            	var shop = Ext.create('LocalizationShop',{
+            		parent: this.record,
+            		model: this.storyModel,
+            		logger: this.logger,
+            		scope: this
+            	});
+            	shop.addLocalization();
+
+            },
+
+            /**
+             * @cfg {Function}
+             *
+             * A function that should return true if this menu item should show.
+             * @param record {Rally.domain.WsapiModel}
+             * @return {Boolean}
+             */
+            predicate: function (record) {
+                return true;
+            },
+
+            /**
+             * @cfg {String}
+             * The display string
+             */
+            text: 'Add Localization...'
+
+        },
+        constructor:function (config) {
+            this.initConfig(config);
+            this.callParent(arguments);
+        }
+
+    });
+    
+    
+    Ext.override(Rally.ui.menu.DefaultRecordMenu, {
+        _getMenuItems: function() {
+            var record = this.getRecord();
+            var items = [
+                 {
+                     xtype: 'rallyrecordmenuitemlocalization',
+                     record: record,
+                     beforeAction: alert('woo hoo'),
+                     actionScope: this
+                 },
+                {
+                    xtype: 'rallyrecordmenuitemedit',
+                    record: record,
+                    beforeAction: this.getOnBeforeRecordMenuEdit(),
+                    actionScope: this
+                },
+                {
+                    xtype: 'rallyrecordmenuitemcopy',
+                    record: record,
+                    beforeAction: this.getOnBeforeRecordMenuCopy(),
+                    afterAction: this.getOnRecordMenuCopy(),
+                    actionScope: this
+                }
+            ];
+            if (this.showAddTasks !== false) {
+                items.push({
+                    xtype: 'rallyrecordmenuitemaddtask',
+                    record: record
+                });
+            }
+
+            items.push(
+                {
+                    xtype: 'rallyrecordmenuitemaddchild',
+                    record: record
+                },
+                {
+                    xtype: 'menuseparator'
+                },
+                {
+                    xtype: 'rallyrecordmenuitemrankextreme',
+                    rankRecordFinder: this.getRankRecordFinder(),
+                    rankPosition: 'highest',
+                    record: record,
+                    beforeAction: this.getOnBeforeRecordMenuRankHighest(),
+                    actionScope: this
+                },
+                {
+                    xtype: 'rallyrecordmenuitemrankextreme',
+                    rankRecordFinder: this.getRankRecordFinder(),
+                    rankPosition: 'lowest',
+                    record: record,
+                    beforeAction: this.getOnBeforeRecordMenuRankLowest(),
+                    actionScope: this
+                },
+                {
+                    xtype: 'menuseparator'
+                },
+                {
+                    xtype: 'rallyrecordmenuitemsplit',
+                    record: record
+                },
+                {
+                    xtype: 'menuseparator'
+                },
+                {
+                    xtype: 'rallyrecordmenuitemdelete',
+                    record: record,
+                    beforeAction: this.getOnBeforeRecordMenuDelete(),
+                    afterAction: this.getOnRecordMenuDelete(),
+                    actionScope: this
+                }
+            );
+            return items;
+        }
+    });
+
+
 Ext.define('CustomApp', {
     extend: 'Rally.app.App',
     componentCls: 'app',
     logger: new Rally.technicalservices.Logger(),
+    selectedStory: null,
     items: [
        {xtype:'container',itemId:'display_box'} 
         /*,
@@ -169,6 +297,7 @@ Ext.define('CustomApp', {
         */
     ],
     childOptions: null,
+    storyModel: null,
     launch: function() {
         if (typeof(this.getAppId()) == 'undefined' ) {
             this.logger.log ('App is not running from within Rally.');
@@ -183,32 +312,52 @@ Ext.define('CustomApp', {
     		success: this._buildUserStoryGrid,
     		scope: this
     	});
-    	this.childOptions = Ext.create('ChildOptions',{});
-    	this.logger.log('child options created: ' + childOptions.getChildCount());
+    	
+    	this.down('#display_box').add({
+            xtype: 'rallybutton',
+            text: 'Add',
+            style: {margin: '5px'},
+            scope: this,
+            handler: this._addLocalization
+        });
         
     },
     
     _buildUserStoryGrid: function(model){
     	
+    	this.storyModel = model;
     	var storyGrid = Ext.create('Rally.ui.grid.Grid', 
     			{
     				model: model,
     				columnCfgs: ['FormattedID','Name','Owner','ScheduleState'],
-    				storeConfig: {}
+    				storeConfig: {},
+    				scope: this,
+    				listeners: {
+    					select: this._selectStory,
+    					scope: this
+    				}
     			});
     	this.down('#display_box').add(storyGrid);
  
     	
     },
-    _createStories: function(){
-    	this.logger.log('Create Epic Story');
-    	this.logger.log('Existing Story to be epic child');
-    	this.logger.log('Add Region and Language children (of epic or story?)');
+    _selectStory: function(record, index){
     	
-    	
-    	
+    	this.selectedStory = record.selected.items[0]; 
+    	console.log(this.selectedStory);
     },
-    
+    _addLocalization: function(){
+    	
+    	var shop = Ext.create('LocalizationShop',{
+    		origin: this.selectedStory,
+    		model: this.storyModel,
+    		logger: this.logger,
+    		scope: this
+    	});
+    	shop.addLocalization();
+
+    },
+  
     /*
      * 
      * Settings related code below here 
@@ -303,47 +452,210 @@ Ext.define('CustomApp', {
    }
 });
 
-Ext.define('ChildOptions',{
-	optionNames: [], //Array of names for each option e.g. 'region, language, etc
-	optionChoices: {}, //Hash\object keyed off of option name;  contains arrays of choices 
-	optionSelections: [], //Array of hash choices
+Ext.define('LocalizationShop',{
+	config: {
+		origin: null,
+		model: null,
+		logger: null
+	},
+	ui: null,
+	treeStore: null,
+	constructor: function(config){
 
-	constructor: function(){
-		this.optionNames = ['Region','Language'];
-		this.optionChoices['Region'] = ['North America','Europe','Asia'];
-		this.optionChoices['Language'] = ['English','German','French','Japanese'];
+		this.initConfig(config);
+		
+		this.treeStore = Ext.create('Ext.data.TreeStore',{
+			root: {
+				expanded: true,
+				children: [
+				           {text: "North America", 
+				        	   expanded: true,
+				        	   children: [
+                                          {text:'English', leaf:true, checked: true},
+                                          {text:'German', leaf: true, checked: false},
+                                          {text:'French', leaf: true, checked: false}
+                                          ]},
+				            {text: "Europe", 
+                               expanded: true,
+                               children: [
+                                        {text:'English', leaf:true, checked:false},
+                                        {text:'German', leaf:true, checked:false},
+                                        {text: 'French', leaf: true, checked:false}
+                                        ]},
+				            {text: "Asia", 
+                              expanded: true,  
+                              children: [
+                                      {text:'English',leaf:true, checked:false},
+                                      {text:'Japanese',leaf:true, checked:false},
+                                      {text:'Chinese',leaf:true, checked:false}
+                                      ]}
+				]
+			}
+		});
+		
+		
+		this.ui = Ext.create('Rally.ui.dialog.Dialog',{
+			width: 300,
+			title: 'Select Localization Options',
+			modal: true,
+			items: 
+			[
+			  {
+				xtype: 'treepanel',
+				store: this.treeStore
+			  },
+			  {
+				  xtype: 'rallybutton',
+				  text: 'OK',
+				  scope: this,
+				  margin: 10,
+				  handler: this._ok
+			  },
+			  {
+				  xtype: 'rallybutton',
+				  text: 'Cancel',
+				  scope: this,
+				  margin: 10,
+				  handler: this._cancel
+					 
+			  }
+			  
+			]
+		});
+
 	},	
+	_ok: function(){
+	  	this.ui.destroy();
+	  	this._createStories(this.options);
+	},
+	_cancel: function(){
+		this.ui.destroy();
+	},
+	addLocalization: function(){
+		this.ui.show();
+	},
+    _createStories: function(){
+    	var me = this; 
 
-	getChildCount: function(){
-		return optionSelections.length; 
-	},
-	
-	isSelected: function(region, language){
-		for (var i=0;i<optionSelections.length;i++)
-		{
-			if ((optionSelections[i]['Region'] == region) && (optionSelections[i]['Language']==language)){
-				return true;  
-			}
-		}		
-		return false; 
-	},
-	add: function(region, language){
-		if (!isSelected(region,language)){
-			var optionSelection = {};
-			optionSelection['Region'] = region;
-			optionSelection['Language'] = language; 
-			optionSelections.push(optionSelection);
-		}
-	},
-	remove: function(region, language){
-		for (var i=0;i<optionSelections.length;i++)
-		{
-			if ((optionSelections[i]['Region'] == region) && (optionSelections[i]['Language']==language)){
-				Ext.Array.remove(optionSelections, i);
-				i = optionSelections.length; 
-			}
-		}
-	}
+    	//First, create the new EPIC if we have at least one checked
+    	if (this._getLocalizationOptionCount() == 0){
+    		alert("No Localization options selected so no new stories were created.");
+    		return;
+    	}
+    	var parentRef = this.origin.get('Parent');
+    	var parentDesc = 'Epic for ' + this.origin.get('Description');
+    	var parentName = 'Epic: ' + this.origin.get('Name');
+    	
+    	
+    	
+    	
+    	this._createStory(parentName, parentDesc, parentRef).then(
+    	{
+    		scope: this,
+    		success: function(result){
+    			parentRef = result.get('_ref');
+    			var parentFid = result.get('FormattedID');
+    			var promises = [];
+    	    	var root = this.treeStore.getRootNode();
+    	    	root.eachChild(
+    	    		function(node){
+		    			var region = node.data.text;
+		    			node.eachChild(
+							function(childNode){
+								if (childNode.data.checked){
+									var language = childNode.data.text;
+				        			me.logger.log('Add story for Region: ' + region + ' and language: ' + language);
+									var desc = parentFid + ': Localization for ' + region + ': ' + language;
+				        			promises.push(function() {return me._createStory(desc, desc, parentRef);});
+								}
+									
+							});
+		    		});
+    	    	
+    	    	//Now update the original story's parent...
+    	    	promises.push(function() {
+    	    		me.origin.set('Parent',parentRef);
+    	    		return me._updateStory(me.origin);
+    	    	});
+    	    	
+    	    	Deft.Chain.sequence(promises).then({
+    	    		success: function(records){
+    	    			me.logger.log ('Success');
+    	    		},
+    	    		failure: function(error){
+    	    			me.logger.log('Failure');
+    	    			me.logger.log(error);
+    	    		}
+    	    	});
+    	    	
+    	    	//Now we need to wire up the children to the parent.  
+    	    	
+    			
+    		},
+    		failure: function(error){
+    			this.logger.log('Error creating epic story');
+    			this.logger.log(error);
+    		}
+    	});
+    	
+
+    },
+
+    _createStory: function(name, desc, parentRef){
+    	var deferred = Ext.create('Deft.Deferred');
+    	
+    	var rec = Ext.create(this.model,{
+    		Name: name
+    	});
+    	rec.set('Description','description');
+    	rec.set('Parent',parentRef);
+    	rec.save({
+    		scope: this,
+    		callback: function(result, operation){
+    			if (operation.wasSuccessful()){
+    				deferred.resolve(result);
+        			this.logger.log('story saved' + name);
+    			} else {
+                	this.logger.log('error in _createStory' + name );
+                	this.logger.log(operation.getError());
+    				deferred.reject(operation.getError());
+    			}
+    		}
+    	});
+    	return deferred.promise;  
+    },
+    _updateStory: function(story){
+    	var deferred = Ext.create('Deft.Deferred');
+    	story.save({
+    		scope: this,
+    		callback: function(result, operation){
+    			if (operation.wasSuccessful()){
+    				deferred.resolve(result);
+        			this.logger.log('Story Saved.');
+    			} else {
+                	this.logger.log('error in _updateStory');
+                	this.logger.log(operation.getError());
+    				deferred.reject(operation.getError());
+    			}
+    		}
+    	});
+    	return deferred.promise; 
+    },
+    _getLocalizationOptionCount: function(){
+    	var count = 0;
+    	var root = this.treeStore.getRootNode();
+    	root.eachChild(
+    		function(node){
+    			node.eachChild(
+    					function(childNode){
+    						if (childNode.data.checked){
+    							count++;
+    						}
+    					});
+    		});
+    	return count;
+
+    }
 });
             
                Rally.launchApp('CustomApp', {

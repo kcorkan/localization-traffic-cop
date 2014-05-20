@@ -1,6 +1,6 @@
 Ext.define('LocalizationShop',{
 	config: {
-		parent: null,
+		origin: null,
 		model: null,
 		logger: null
 	},
@@ -88,37 +88,49 @@ Ext.define('LocalizationShop',{
     		alert("No Localization options selected so no new stories were created.");
     		return;
     	}
-    	var parentRef = this.parent.get('_ref');
-    	var parentDesc = this.parent.get('Description');
-    	var parentName = this.parent.get('Name');
-    	var parentFid = this.parent.get('FormattedID');
+    	var parentRef = this.origin.get('Parent');
+    	var parentDesc = 'Epic for ' + this.origin.get('Description');
+    	var parentName = 'Epic: ' + this.origin.get('Name');
+    	
+    	
+    	
     	
     	this._createStory(parentName, parentDesc, parentRef).then(
     	{
     		scope: this,
     		success: function(result){
-    	    	var promises = [];
+    			parentRef = result.get('_ref');
+    			var parentFid = result.get('FormattedID');
+    			var promises = [];
     	    	var root = this.treeStore.getRootNode();
     	    	root.eachChild(
     	    		function(node){
-    	    			var region = node.data.text;
-    	    			node.eachChild(
-    	    					function(childNode){
-    	    						if (childNode.data.checked){
-    	    								var language = childNode.data.text;
-    	    			        			me.logger.log('Add story for Region: ' + region + ' and language: ' + language);
-    	    								var desc = parentFid + ': Localization for ' + region + ': ' + language;
-    	    			        			promises.push(function() {return me._createStory(desc, desc, parentRef);});
-    	    							}
-    	    							
-    	    				});
-    	    			});
+		    			var region = node.data.text;
+		    			node.eachChild(
+							function(childNode){
+								if (childNode.data.checked){
+									var language = childNode.data.text;
+				        			me.logger.log('Add story for Region: ' + region + ' and language: ' + language);
+									var desc = parentFid + ': Localization for ' + region + ': ' + language;
+				        			promises.push(function() {return me._createStory(desc, desc, parentRef);});
+								}
+									
+							});
+		    		});
+    	    	
+    	    	//Now update the original story's parent...
+    	    	promises.push(function() {
+    	    		me.origin.set('Parent',parentRef);
+    	    		return me._updateStory(me.origin);
+    	    	});
+    	    	
     	    	Deft.Chain.sequence(promises).then({
     	    		success: function(records){
     	    			me.logger.log ('Success');
     	    		},
     	    		failure: function(error){
     	    			me.logger.log('Failure');
+    	    			me.logger.log(error);
     	    		}
     	    	});
     	    	
@@ -157,6 +169,23 @@ Ext.define('LocalizationShop',{
     		}
     	});
     	return deferred.promise;  
+    },
+    _updateStory: function(story){
+    	var deferred = Ext.create('Deft.Deferred');
+    	story.save({
+    		scope: this,
+    		callback: function(result, operation){
+    			if (operation.wasSuccessful()){
+    				deferred.resolve(result);
+        			this.logger.log('Story Saved.');
+    			} else {
+                	this.logger.log('error in _updateStory');
+                	this.logger.log(operation.getError());
+    				deferred.reject(operation.getError());
+    			}
+    		}
+    	});
+    	return deferred.promise; 
     },
     _getLocalizationOptionCount: function(){
     	var count = 0;

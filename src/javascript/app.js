@@ -62,7 +62,7 @@ Ext.define('CustomApp', {
     _addLocalization: function(){
     	
     	var shop = Ext.create('LocalizationShop',{
-    		parent: this.selectedStory,
+    		origin: this.selectedStory,
     		model: this.storyModel,
     		logger: this.logger,
     		scope: this
